@@ -3,13 +3,15 @@
 > **Note:** This is a fork of [karpathy/nanochat](https://github.com/karpathy/nanochat) implementing the **THEN (Temporal History Episodic Network)** architecture for "Live Memory."
 
 **Key Features of this Fork:**
-1.  **Ingest, Don't Train**: Solves catastrophic forgetting by separating mechanism learning (weights) from memory population (state).
-2.  **Stateful Pretraining**: Modifies the training loop to learn how to read/write memory traces.
-3.  **Coherent Narratives**: Includes tools to generate and ingest consistent, long-horizon episodic data.
+
+1. **Ingest, Don't Train**: Solves catastrophic forgetting by separating mechanism learning (weights) from memory population (state).
+2. **Stateful Pretraining**: Modifies the training loop to learn how to read/write memory traces.
+3. **Coherent Narratives**: Includes tools to generate and ingest consistent, long-horizon episodic data.
 
 **Learn More**:
-*   [Conceptual Guide: The THEN Architecture](docs/concepts/then_architecture_public.md) - How we solve AI amnesia using a "Notebook" analogy.
-*   [Technical Critique](docs/critique_loop_2.md) - Honest analysis of current prototype limitations.
+
+* [Conceptual Guide: The THEN Architecture](docs/concepts/then_architecture_public.md) - How we solve AI amnesia using a "Notebook" analogy.
+* [Technical Critique](docs/critique_loop_2.md) - Honest analysis of current prototype limitations.
 
 ---
 
