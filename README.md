@@ -11,7 +11,7 @@
 **Learn More**:
 
 * [Conceptual Guide: The THEN Architecture](docs/concepts/then_architecture_public.md) - How we solve AI amnesia using a "Notebook" analogy.
-* [Technical Critique](docs/critique_loop_2.md) - Honest analysis of current prototype limitations.
+* [Technical Critique](docs/critique/critique_loop_2.md) - Honest analysis of current prototype limitations.
 
 ---
 
@@ -74,7 +74,7 @@ python -m tests.test_live_memory
 
 ### Critical Analysis & Roadmap
 
-See [docs/critique_loop_2.md](docs/critique_loop_2.md) for a detailed resource, cost, and architectural analysis.
+See [docs/critique/critique_loop_2.md](docs/critique/critique_loop_2.md) for a detailed resource, cost, and architectural analysis.
 Key findings:
 
 * **Cost**: Moving memory to Disk/NVMe (Stage 2) is essential to reduce cost from $0.37/user/hr to $0.0001/user/hr.
