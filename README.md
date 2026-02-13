@@ -1,6 +1,6 @@
 # nanochat (Live Memory Fork)
 
-> **Note:** This is a fork of [karpathy/nanochat](https://github.com/karpathy/nanochat) implementing the **THEN (Temporal History Episodic Network)** architecture for "Live Memory."
+> **Note:** This is a fork of [karpathy/nanochat](https://github.com/karpathy/nanochat) implementing the **THEN (Temporal History Episodic Network)** architecture mod I thought of for "Live Memory."
 
 **Key Features of this Fork:**
 
