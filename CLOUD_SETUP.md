@@ -129,7 +129,7 @@ Before launching a full run, verify that Flash Attention 3 is active and the Liv
 
 ```bash
 # 1. Verify GPU and FA3
-python scripts/test_chat.py
+python -m tests.test_chat_manual
 
 # 2. Verify Live Memory Logic
 python -m tests.test_live_memory

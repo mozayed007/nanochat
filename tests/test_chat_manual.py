@@ -3,13 +3,19 @@ import torch.nn.functional as F
 import os
 import sys
 from nanochat.tokenizer import get_tokenizer
-from nanochat.checkpoint_manager import load_model_from_dir, find_last_step
-from nanochat.common import get_base_dir, compute_init
+from nanochat.checkpoint_manager import load_checkpoint, build_model
+from nanochat.common import get_base_dir, print0
 
 def test_memory():
     # Setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    
+    # Mock or Load Logic - this script seems to rely on an existing run.
+    # We'll update it to be more robust or mark it as a manual verification script.
+    
+    # ... (rest of logic)
+
     
     # Load model
     base_dir = get_base_dir()
