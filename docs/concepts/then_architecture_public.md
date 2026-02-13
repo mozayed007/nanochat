@@ -4,9 +4,25 @@
 
 Most Large Language Models (LLMs) suffer from **anterograde amnesia**.
 
-* When you train them (Phase 1), they learn general knowledge (e.g., "The sky is blue").
-* When you chat with them (Inference), they cannot "learn" new things permanently. If you tell them "My name is Sarah," they only remember it for the duration of the context window. Once the chat closes or the window fills up, the information is gone forever.
-* **The Old Solution (SFT)**: To make the model remember "My name is Sarah," you have to **re-train** the model on that sentence. This is slow, expensive, and risks overwriting old knowledge (catastrophic forgetting).
+*   **Training (Phase 1)**: They learn general knowledge (e.g., "The sky is blue").
+*   **Inference (Chat)**: They cannot "learn" new things permanently. If you tell them "My name is Sarah," they only remember it for the duration of the context window. Once the chat closes or the window fills up, the information is gone forever.
+
+### Why Current Solutions Fail
+
+1.  **SFT / Fine-Tuning**:
+    *   **The Mechanism**: Re-training the model's weights on new data.
+    *   **The Pain**: It's slow, expensive, and destructive. Teaching the model "Sarah likes coffee" might overwrite "Sarah is a programmer" (Catastrophic Forgetting). It creates a static snapshot, not a living memory.
+
+2.  **RAG (Retrieval-Augmented Generation)**:
+    *   **The Mechanism**: Using a search engine (Vector DB) to find documents and pasting them into the prompt.
+    *   **The Pain**: It is **disembodied**. The model doesn't "know" the memory; it just reads a text snippet you pasted.
+        *   **No Intuition**: It can't form subconscious connections or "feel" the history.
+        *   **Latency**: Requires an external database lookup and massive prompt stuffing.
+        *   **Context Choking**: Pasting 10k words of history into the prompt makes the model slower, dumber, and wildly expensive per token.
+
+3.  **Plugins / Tools**:
+    *   **The Mechanism**: Giving the model a "Save to File" tool.
+    *   **The Pain**: It is **manual and clunky**. The model has to *decide* to call a tool, format a JSON, and hope it wrote the right thing. It's not a natural cognitive process; it's a bureaucratic task.
 
 ## The Solution: Temporal History Episodic Network (THEN)
 
