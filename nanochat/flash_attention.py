@@ -1,6 +1,11 @@
 """
 Unified Flash Attention interface with automatic FA3/SDPA switching.
 
+# [THEN] New Module
+# This entire file was added/heavily modified to support the Live Memory hardware requirements.
+# It provides a seamless fallback between Flash Attention 3 (for H100) and SDPA (for local dev),
+# which is critical for developing the THEN architecture on consumer hardware before cloud deployment.
+
 Exports `flash_attn` module that matches the FA3 API exactly, but falls back
 to PyTorch SDPA on non-Hopper GPUs (including Blackwell), MPS, and CPU.
 

@@ -39,7 +39,7 @@ def _patch_missing_keys(model_data, model_config):
         model_data["x0_lambdas"] = torch.zeros(n_layer)
         log0(f"Patching missing x0_lambdas in model data to 0.0")
 
-def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data, rank=0):
+def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data, rank=0, state=None):
     if rank == 0:
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Save the model state parameters
@@ -51,6 +51,13 @@ def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data,
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta_data, f, indent=2)
         logger.info(f"Saved metadata to: {meta_path}")
+        
+        # [THEN] Save internal memory state if provided
+        if state is not None:
+            state_path = os.path.join(checkpoint_dir, f"state_{step:06d}.pt")
+            torch.save(state, state_path)
+            logger.info(f"Saved memory state to: {state_path}")
+
     # Note that optimizer state is sharded across ranks, so each rank must save its own.
     if optimizer_data is not None:
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -58,7 +65,7 @@ def save_checkpoint(checkpoint_dir, step, model_data, optimizer_data, meta_data,
         torch.save(optimizer_data, optimizer_path)
         logger.info(f"Saved optimizer state to: {optimizer_path}")
 
-def load_checkpoint(checkpoint_dir, step, device, load_optimizer=False, rank=0):
+def load_checkpoint(checkpoint_dir, step, device, load_optimizer=False, rank=0, load_state=False):
     # Load the model state
     model_path = os.path.join(checkpoint_dir, f"model_{step:06d}.pt")
     model_data = torch.load(model_path, map_location=device)
@@ -71,19 +78,35 @@ def load_checkpoint(checkpoint_dir, step, device, load_optimizer=False, rank=0):
     meta_path = os.path.join(checkpoint_dir, f"meta_{step:06d}.json")
     with open(meta_path, "r", encoding="utf-8") as f:
         meta_data = json.load(f)
+    
+    # [THEN] Load state if requested
+    state = None
+    if load_state:
+        state_path = os.path.join(checkpoint_dir, f"state_{step:06d}.pt")
+        if os.path.exists(state_path):
+            state = torch.load(state_path, map_location=device)
+            
+    if load_state:
+        return model_data, optimizer_data, meta_data, state
     return model_data, optimizer_data, meta_data
 
 
-def build_model(checkpoint_dir, step, device, phase):
+def build_model(checkpoint_dir, step, device, phase, load_state=False):
     """
     A bunch of repetitive code to build a model from a given checkpoint.
     Returns:
     - base model - uncompiled, not wrapped in DDP
     - tokenizer
     - meta data saved during base model training
+    - (optional) state if load_state=True
     """
     assert phase in ["train", "eval"], f"Invalid phase: {phase}"
-    model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+    if load_state:
+        model_data, optimizer_data, meta_data, state = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False, load_state=True)
+    else:
+        model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, step, device, load_optimizer=False)
+        state = None
+
     if device.type in {"cpu", "mps"}:
         # Convert bfloat16 tensors to float for CPU inference
         model_data = {
@@ -99,6 +122,19 @@ def build_model(checkpoint_dir, step, device, phase):
     _patch_missing_keys(model_data, model_config)
     with torch.device("meta"):
         model = GPT(model_config)
+        # TODO: Handle THENGPT instantiation if needed, or assume GPT is enough if we are just loading weights?
+        # If the model was trained as THENGPT, we might need to instantiate THENGPT.
+        # For now, we instantiate GPT, but if the checkpoint has THEN weights, GPT might ignore them or error out?
+        # GPT has strict=True in load_state_dict.
+        # If we want to support THENGPT, we should probably check if 'then_attn' keys are in model_data.
+    
+    # [THEN] Check for THENGPT keys
+    is_then_gpt = any('then_attn' in k for k in model_data.keys())
+    if is_then_gpt:
+        from nanochat.gpt import THENGPT
+        with torch.device("meta"):
+            model = THENGPT(model_config)
+
     # Load the model state
     model.to_empty(device=device)
     model.init_weights() # note: this is dumb, but we need to init the rotary embeddings. TODO: fix model re-init
@@ -112,6 +148,9 @@ def build_model(checkpoint_dir, step, device, phase):
     tokenizer = get_tokenizer()
     # Sanity check: compatibility between model and tokenizer
     assert tokenizer.get_vocab_size() == model_config_kwargs["vocab_size"], f"Tokenizer vocab size {tokenizer.get_vocab_size()} does not match model config vocab size {model_config_kwargs['vocab_size']}"
+    
+    if load_state:
+        return model, tokenizer, meta_data, state
     return model, tokenizer, meta_data
 
 

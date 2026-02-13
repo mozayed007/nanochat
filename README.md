@@ -1,4 +1,14 @@
-# nanochat
+# nanochat (Live Memory Fork)
+
+> **Note:** This is a fork of [karpathy/nanochat](https://github.com/karpathy/nanochat) implementing the **THEN (Temporal History Episodic Network)** architecture for "Live Memory."
+
+**Key Features of this Fork:**
+
+1. **Ingest, Don't Train**: Solves catastrophic forgetting by separating mechanism learning (weights) from memory population (state).
+2. **Stateful Pretraining**: Modifies the training loop to learn how to read/write memory traces.
+3. **Coherent Narratives**: Includes tools to generate and ingest consistent, long-horizon episodic data.
+
+---
 
 ![nanochat logo](dev/nanochat.png)
 ![scaling laws](dev/scaling_laws_jan26.png)
@@ -21,6 +31,49 @@ Presently, the main focus of development is on tuning the pretraining stage, whi
 The primary metric we care about is "time to GPT-2" - the wall clock time needed to outperform the GPT-2 (1.6B) CORE metric on an 8XH100 GPU node. The GPT-2 CORE score is 0.256525. In 2019, the training of GPT-2 cost approximately $43,000 so it is incredible that due to many advances over 7 years across the stack, we can now do so much faster and for well below $100 (e.g. at the current ~$3/GPU/hr, an 8XH100 node is ~$24/hr, so 3 hours is ~$72).
 
 See [dev/LEADERBOARD.md](dev/LEADERBOARD.md) for more docs on how to interpret and contribute to the leaderboard.
+
+## Live Memory (THEN) Workflow
+
+This fork implements the "Ingest, Don't Train" workflow for episodic memory. Instead of training the model weights on episodic data (which leads to catastrophic forgetting or overfitting), we use a 3-phase pipeline:
+
+1. **Phase 1: Pretrain (Weights)**
+    Train the base model on generic data (e.g., FineWeb) to learn language and the *mechanism* of memory (compression/retrieval), but not specific memories.
+
+    ```bash
+    python -m scripts.base_train --model-class THENGPT --depth 8 ...
+    ```
+
+2. **Phase 2: Ingest (State)**
+    Feed episodic data (e.g., `synthetic-cairo-episodes.txt`) into the *frozen* model. This populates the memory state (`traces`) without changing weights.
+
+    ```bash
+    python -m scripts.ingest --model_path outputs/d8/model_000100.pt --data_path data/synthetic-cairo-episodes.txt
+    ```
+
+3. **Phase 3: Query (Recall)**
+    Load the frozen model and the populated memory state to answer questions based on the ingested history.
+
+    ```bash
+    python -m scripts.query --model_path outputs/d8/model_000100.pt --state_path cairo_memory_state.pt
+    ```
+
+### Evaluation
+
+To verify the Live Memory flow (state persistence, saving/loading), run the included test suite:
+
+```bash
+python -m tests.test_live_memory
+```
+
+*Note: High recall accuracy requires a fully pretrained THENGPT model. The tests currently verify the mechanical correctness of the state pipeline.*
+
+### Critical Analysis & Roadmap
+
+See [docs/critique_loop_2.md](docs/critique_loop_2.md) for a detailed resource, cost, and architectural analysis.
+Key findings:
+
+* **Cost**: Moving memory to Disk/NVMe (Stage 2) is essential to reduce cost from $0.37/user/hr to $0.0001/user/hr.
+* **Architecture**: The current "Mean Retrieval" must be replaced with "Attention Retrieval" to avoid memory blurring.
 
 ## Getting started
 
@@ -48,16 +101,16 @@ And then visit the URL shown. Make sure to access it correctly, e.g. on Lambda u
 
 A few more notes:
 
-- The code will run just fine on the Ampere 8XA100 GPU node as well, but a bit slower.
-- All code will run just fine on even a single GPU by omitting `torchrun`, and will produce ~identical results (code will automatically switch to gradient accumulation), but you'll have to wait 8 times longer.
-- If your GPU(s) have less than 80GB, you'll have to tune some of the hyperparameters or you will OOM / run out of VRAM. Look for `--device_batch_size` in the scripts and reduce it until things fit. E.g. from 32 (default) to 16, 8, 4, 2, or even 1. Less than that you'll have to know a bit more what you're doing and get more creative.
-- Most of the code is fairly vanilla PyTorch so it should run on anything that supports that - xpu, mps, or etc, but I haven't personally exercised all of these code paths so there might be sharp edges.
+* The code will run just fine on the Ampere 8XA100 GPU node as well, but a bit slower.
+* All code will run just fine on even a single GPU by omitting `torchrun`, and will produce ~identical results (code will automatically switch to gradient accumulation), but you'll have to wait 8 times longer.
+* If your GPU(s) have less than 80GB, you'll have to tune some of the hyperparameters or you will OOM / run out of VRAM. Look for `--device_batch_size` in the scripts and reduce it until things fit. E.g. from 32 (default) to 16, 8, 4, 2, or even 1. Less than that you'll have to know a bit more what you're doing and get more creative.
+* Most of the code is fairly vanilla PyTorch so it should run on anything that supports that - xpu, mps, or etc, but I haven't personally exercised all of these code paths so there might be sharp edges.
 
 ## Research
 
 If you are a researcher and wish to help improve nanochat, two scripts of interest are [runs/scaling_laws.sh](runs/scaling_laws.sh) and [runs/miniseries.sh](runs/miniseries.sh). See [Jan 7 miniseries v1](https://github.com/karpathy/nanochat/discussions/420) for related documentation. For quick experimentation (~5 min pretraining runs) my favorite scale is to train a 12-layer model (GPT-1 sized), e.g. like this:
 
-```
+```bash
 OMP_NUM_THREADS=1 torchrun --standalone --nproc_per_node=8 -m scripts.base_train -- \
     --depth=12 \
     --run="d12" \
@@ -85,15 +138,15 @@ The script [runs/runcpu.sh](runs/runcpu.sh) shows a very simple example of runni
 
 I've published a number of guides that might contain helpful information, most recent to least recent:
 
-- [Feb 1 2026: Beating GPT-2 for <<$100: the nanochat journey](https://github.com/karpathy/nanochat/discussions/481)
-- [Jan 7 miniseries v1](https://github.com/karpathy/nanochat/discussions/420) documents the first nanochat miniseries of models.
-- To add new abilities to nanochat, see [Guide: counting r in strawberry (and how to add abilities generally)](https://github.com/karpathy/nanochat/discussions/164).
-- To customize your nanochat, see [Guide: infusing identity to your nanochat](https://github.com/karpathy/nanochat/discussions/139) in Discussions, which describes how you can tune your nanochat's personality through synthetic data generation and mixing that data into the SFT stage.
-- [Oct 13 2025: original nanochat post](https://github.com/karpathy/nanochat/discussions/1) introducing nanochat, though now it contains some deprecated information and the model is a lot older (with worse results) than current master.
+* [Feb 1 2026: Beating GPT-2 for <<$100: the nanochat journey](https://github.com/karpathy/nanochat/discussions/481)
+* [Jan 7 miniseries v1](https://github.com/karpathy/nanochat/discussions/420) documents the first nanochat miniseries of models.
+* To add new abilities to nanochat, see [Guide: counting r in strawberry (and how to add abilities generally)](https://github.com/karpathy/nanochat/discussions/164).
+* To customize your nanochat, see [Guide: infusing identity to your nanochat](https://github.com/karpathy/nanochat/discussions/139) in Discussions, which describes how you can tune your nanochat's personality through synthetic data generation and mixing that data into the SFT stage.
+* [Oct 13 2025: original nanochat post](https://github.com/karpathy/nanochat/discussions/1) introducing nanochat, though now it contains some deprecated information and the model is a lot older (with worse results) than current master.
 
 ## File structure
 
-```
+```text
 .
 ├── LICENSE
 ├── README.md
@@ -156,12 +209,12 @@ Current AI policy: disclosure. When submitting a PR, please declare any parts th
 
 ## Acknowledgements
 
-- The name (nanochat) derives from my earlier project [nanoGPT](https://github.com/karpathy/nanoGPT), which only covered pretraining.
-- nanochat is also inspired by [modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt), which gamified the nanoGPT repo with clear metrics and a leaderboard, and borrows a lot of its ideas and some implementation for pretraining.
-- Thank you to [HuggingFace](https://huggingface.co/) for fineweb and smoltalk.
-- Thank you [Lambda](https://lambda.ai/service/gpu-cloud) for the compute used in developing this project.
-- Thank you to chief LLM whisperer 🧙‍♂️ Alec Radford for advice/guidance.
-- Thank you to the repo czar Sofie [@svlandeg](https://github.com/svlandeg) for help with managing issues, pull requests and discussions of nanochat.
+* The name (nanochat) derives from my earlier project [nanoGPT](https://github.com/karpathy/nanoGPT), which only covered pretraining.
+* nanochat is also inspired by [modded-nanoGPT](https://github.com/KellerJordan/modded-nanogpt), which gamified the nanoGPT repo with clear metrics and a leaderboard, and borrows a lot of its ideas and some implementation for pretraining.
+* Thank you to [HuggingFace](https://huggingface.co/) for fineweb and smoltalk.
+* Thank you [Lambda](https://lambda.ai/service/gpu-cloud) for the compute used in developing this project.
+* Thank you to chief LLM whisperer 🧙‍♂️ Alec Radford for advice/guidance.
+* Thank you to the repo czar Sofie [@svlandeg](https://github.com/svlandeg) for help with managing issues, pull requests and discussions of nanochat.
 
 ## Cite
 

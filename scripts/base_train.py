@@ -51,6 +51,10 @@ parser.add_argument("--aspect-ratio", type=int, default=64, help="model_dim = de
 parser.add_argument("--head-dim", type=int, default=128, help="target head dimension for attention")
 parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
 parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
+# [THEN] Model Class argument to switch between vanilla GPT and THENGPT
+parser.add_argument("--model-class", type=str, default="GPT", choices=["GPT", "THENGPT"], help="model class to use")
+# [THEN] Compilation control for debugging stateful models
+parser.add_argument("--no-compile", action="store_true", help="Disable torch.compile")
 # Training horizon (only one used, in order of precedence)
 parser.add_argument("--num-iterations", type=int, default=-1, help="explicit number of optimization steps (-1 = disable)")
 parser.add_argument("--target-flops", type=float, default=-1.0, help="calculate num_iterations to reach target_flops (-1 = disable)")
@@ -135,7 +139,12 @@ def build_model_meta(depth):
         window_pattern=args.window_pattern,
     )
     with torch.device("meta"):
-        model_meta = GPT(config)
+        if args.model_class == "THENGPT":
+            # [THEN] Instantiate THENGPT if requested
+            from nanochat.gpt import THENGPT
+            model_meta = THENGPT(config)
+        else:
+            model_meta = GPT(config)
     return model_meta
 
 # Build the model, move to device, init the weights
@@ -236,7 +245,9 @@ def disable_fp8(model):
 # Compile the model
 
 orig_model = model # original, uncompiled model, for saving raw model state_dict and for inference/evaluation (because the shapes may change shape)
-model = torch.compile(model, dynamic=False) # the inputs to model will never change shape so dynamic=False is safe
+if not args.no_compile and device_type == "cuda":
+    print0("Compiling the model...")
+    model = torch.compile(model, dynamic=False) # the inputs to model will never change shape so dynamic=False is safe
 
 # -----------------------------------------------------------------------------
 # Scaling laws and muP extrapolations to determine the optimal training horizon, batch size, learning rates, weight decay.
@@ -487,9 +498,25 @@ while True:
     # evaluate the gradient
     synchronize()
     t0 = time.time()
+    
+    # [THEN] Initialize state for the batch if not present or if we want to reset it (e.g. periodically)
+    # For now, we persist state across steps (Transformer-XL style) but detach it to truncate BPTT
+    if 'state' not in locals():
+        state = None
+    
+    # Detach state from previous step to stop gradients flowing back too far (Truncated BPTT)
+    if state is not None and isinstance(state, dict):
+        if 'traces' in state:
+            state['traces'] = [t.detach() for t in state['traces']]
+        if 'buffer' in state:
+            state['buffer'] = state['buffer'].detach()
+
     for micro_step in range(grad_accum_steps):
         with autocast_ctx:
-            loss = model(x, y)
+            if args.model_class == "THENGPT":
+                loss, state = model(x, y, state=state, return_state=True)
+            else:
+                loss = model(x, y)
         train_loss = loss.detach() # for logging
         loss = loss / grad_accum_steps # each .backward() is a grad sum => normalize loss here
         loss.backward()
